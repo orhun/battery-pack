@@ -1,0 +1,13 @@
+[package]
+name = "{{ project_name }}"
+version = "0.1.0"
+edition = "2024"
+description = "A Ratatui terminal user interface"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+anyhow = "1"
+ratatui = "0.30"
+
+[dev-dependencies]
+snapbox = "1.2.1"

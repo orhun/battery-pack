@@ -1,0 +1,28 @@
+[package]
+name = "tui-battery-pack"
+version = "0.1.0"
+edition = "2024"
+description = "Battery pack for building terminal user interfaces with Ratatui"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/battery-pack-rs/battery-pack"
+keywords = ["battery-pack", "tui", "ratatui", "terminal"]
+
+[package.metadata.battery.templates]
+app = { path = "templates/app", description = "Ratatui application with terminal setup, event loop, and a testable screen" }
+
+[package.metadata.battery-pack]
+hidden = ["battery-pack", "snapbox"]
+
+[dependencies]
+anyhow = "1"
+ratatui = "0.30"
+
+[build-dependencies]
+battery-pack = { workspace = true, features = ["build"] }
+
+[dev-dependencies]
+battery-pack = { workspace = true, features = ["cli"] }
+snapbox = "1.2.1"
+
+[features]
+default = []

@@ -1,0 +1,191 @@
+── Cargo.toml ──
+[package]
+name = "test-tui"
+version = "0.1.0"
+edition = "2024"
+description = "A Ratatui terminal user interface"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+anyhow = "1"
+ratatui = "0.30"
+
+[dev-dependencies]
+snapbox = "1.2.1"
+
+── battery-pack.toml ──
+version = 1
+
+[[battery-pack]]
+name = "tui"
+features = ["default"]
+
+── build.rs ──
+fn main() {}
+
+
+── src/main.rs ──
+use anyhow::Result;
+use ratatui::Frame;
+use ratatui::crossterm::event::{self, Event, KeyCode, KeyEventKind};
+use ratatui::layout::{Constraint, Layout};
+use ratatui::style::{Color, Modifier, Style};
+use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph};
+
+// Hold the app's small amount of mutable state between redraws.
+#[derive(Default)]
+struct App {
+    tasks: Vec<(&'static str, bool)>,
+    selected: usize,
+}
+
+impl App {
+    // Seed the starter screen with a few tasks that demonstrate selection and completion.
+    fn new() -> Self {
+        Self {
+            tasks: vec![
+                ("Explore the Ratatui widgets", false),
+                ("Handle keyboard input", true),
+                ("Build something useful", false),
+            ],
+            selected: 0,
+        }
+    }
+
+    // Keep selection valid as the list changes.
+    fn move_selection(&mut self, offset: isize) {
+        if self.tasks.is_empty() {
+            self.selected = 0;
+        } else {
+            self.selected =
+                (self.selected as isize + offset).rem_euclid(self.tasks.len() as isize) as usize;
+        }
+    }
+
+    // Toggle completion on the selected task.
+    fn toggle_selected(&mut self) {
+        if let Some((_, done)) = self.tasks.get_mut(self.selected) {
+            *done = !*done;
+        }
+    }
+}
+
+// Draw the app with an in-memory-friendly function that can also be snapshot tested.
+fn draw(frame: &mut Frame<'_>, app: &mut App) {
+    let [title_area, list_area, help_area] = Layout::vertical([
+        Constraint::Length(3),
+        Constraint::Min(1),
+        Constraint::Length(3),
+    ])
+    .areas(frame.area());
+
+    let title = Paragraph::new("test-tui")
+        .style(
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        )
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(" Ratatui starter "),
+        );
+    frame.render_widget(title, title_area);
+
+    let items = app.tasks.iter().map(|(label, done)| {
+        let marker = if *done { "[x]" } else { "[ ]" };
+        ListItem::new(format!("{marker} {label}"))
+    });
+    let list = List::new(items)
+        .block(Block::default().borders(Borders::ALL).title(" Tasks "))
+        .highlight_style(Style::default().add_modifier(Modifier::REVERSED))
+        .highlight_symbol("> ");
+    let mut state = ListState::default().with_selected(Some(app.selected));
+    frame.render_stateful_widget(list, list_area, &mut state);
+
+    let help = Paragraph::new("↑/k and ↓/j move  •  Space toggle  •  q quit")
+        .block(Block::default().borders(Borders::ALL));
+    frame.render_widget(help, help_area);
+}
+
+// Drive input and redraw until the user quits.
+fn run(terminal: &mut ratatui::DefaultTerminal) -> Result<()> {
+    let mut app = App::new();
+    loop {
+        terminal.draw(|frame| draw(frame, &mut app))?;
+        if let Event::Key(key) = event::read()? {
+            if key.kind != KeyEventKind::Press {
+                continue;
+            }
+            match key.code {
+                KeyCode::Char('q') | KeyCode::Esc => break,
+                KeyCode::Up | KeyCode::Char('k') => app.move_selection(-1),
+                KeyCode::Down | KeyCode::Char('j') => app.move_selection(1),
+                KeyCode::Char(' ') | KeyCode::Enter => app.toggle_selected(),
+                _ => {}
+            }
+        }
+    }
+    Ok(())
+}
+
+// Restore the user's terminal whether the event loop succeeds or returns an error.
+fn main() -> Result<()> {
+    let mut terminal = ratatui::init();
+    let result = run(&mut terminal);
+    ratatui::restore();
+    result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{App, draw};
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+    use snapbox::{assert_data_eq, str};
+
+    // Render the app into a deterministic in-memory terminal buffer.
+    fn render() -> String {
+        let backend = TestBackend::new(80, 12);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut app = App::new();
+        terminal.draw(|frame| draw(frame, &mut app)).unwrap();
+        terminal
+            .backend()
+            .to_string()
+            .replace(env!("CARGO_PKG_NAME"), "test-project")
+    }
+
+    // Confirm navigation wraps around the task list.
+    #[test]
+    fn selection_wraps() {
+        let mut app = App::new();
+        app.move_selection(-1);
+        assert_eq!(app.selected, 2);
+    }
+
+    // Check the complete initial screen as rendered by Ratatui.
+    #[test]
+    fn snapshot_screen() {
+        assert_data_eq!(
+            render(),
+            str![[r#"
+"┌ Ratatui starter ─────────────────────────────────────────────────────────────┐"
+"│test-project                                                               │"
+"└──────────────────────────────────────────────────────────────────────────────┘"
+"┌ Tasks ───────────────────────────────────────────────────────────────────────┐"
+"│> [ ] Explore the Ratatui widgets                                             │"
+"│  [x] Handle keyboard input                                                   │"
+"│  [ ] Build something useful                                                  │"
+"│                                                                              │"
+"└──────────────────────────────────────────────────────────────────────────────┘"
+"┌──────────────────────────────────────────────────────────────────────────────┐"
+"│↑/k and ↓/j move  •  Space toggle  •  q quit                                  │"
+"└──────────────────────────────────────────────────────────────────────────────┘"
+
+"#]]
+        );
+    }
+}
+
+

@@ -20,6 +20,7 @@ members = [
     "battery-packs/embedded-battery-pack",
     "battery-packs/error-battery-pack",
     "battery-packs/logging-battery-pack",
+    "battery-packs/tui-battery-pack",
 ]
 resolver = "2"
 
